@@ -1,6 +1,7 @@
 
-#include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
-#include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
+#include <Wire.h>  
+#include <Ticker.h>
+#include "SSD1306Wire.h" 
 
 SSD1306Wire  display(0x3c, 5, 4);
 
@@ -9,10 +10,14 @@ SSD1306Wire  display(0x3c, 5, 4);
 #define NUM_SAMPLES 20
 #define BUZZ_PIN 12
 
-#define RUNNING_AVG 100
+#define RUNNING_AVG 128
 
-int sensorPin = 39;    // select the input pin for the potentiometer      // select the pin for the LED
-int sensorValue[NUM_SAMPLES] = {};  // variable to store the value coming from the sensor
+#define PLOT_Y_H 64
+#define PLOT_Y_L 20
+
+
+int sensorPin = 39;    
+int sensorValue[NUM_SAMPLES] = {};  
 int outputValue[1000] = {};
 int i = 0;
 int n = 0;
@@ -22,6 +27,10 @@ int runningAverage = 0;
 
 int sumsum = 0;
 
+Ticker sampler;
+
+Ticker tickerBPM;
+
 void setup() {
   Serial.begin(115200);
   Serial.println();
@@ -30,9 +39,14 @@ void setup() {
   display.init();
 
   display.flipScreenVertically();
-  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_16);
+  display.setColor(WHITE);
 
   pinMode(BUZZ_PIN, OUTPUT);
+
+  sampler.attach_ms(1, sampleAndCalculate);
+  tickerBPM.attach_ms(6000, calculateBPM);
 }
 
 
@@ -54,43 +68,60 @@ void drawTextAlignmentDemo() {
 }
 
 
-
+int pulseCounter = 0;
+int pulseCounterOld = 0;
+int BPM = 60;
+int BPMOld = 60;
+void calculateBPM(void){
+  BPM = 5 * (pulseCounter+pulseCounterOld);
+  BPM = (BPM+BPMOld)/2;
+  BPMOld = BPM;
+  pulseCounterOld = pulseCounter;
+  pulseCounter = 0;
+}
 
 unsigned long currentMillis = 0, previousMillis = 0;
+
+bool beat = false;
+bool beatOld = false;
 
 void buzz(int val, int avg){
   int interval = 100;
   int treshold;
-  treshold = avg * 1.2;
-
+  treshold = avg * 1.4;
 
   
   currentMillis = millis();
   if(val > treshold){
     digitalWrite(BUZZ_PIN, HIGH);
     previousMillis = currentMillis;
+    beatOld = beat;
+    beat = true;
   }
 
-  currentMillis = millis();
    
   if (currentMillis - previousMillis >= interval) {
     
     digitalWrite(BUZZ_PIN, LOW);
+    beatOld = beat;
+    beat = false;
   }
+
+  if((beatOld == true) && (beat == false)){
+    pulseCounter++;
+  }
+
 
 }
 
 
-void loop() {
-  // read the value from the sensor:
+void sampleAndCalculate() {
   sensorValue[i] = analogRead(sensorPin);
   sum += sensorValue[i];
   i++;
-
   
   avg = sum/NUM_SAMPLES;
   
-  delay(1);
 
   if(i == NUM_SAMPLES ){
     
@@ -110,9 +141,45 @@ void loop() {
     if(n == RUNNING_AVG)
       n = 0;
 
-    buzz(avg,runningAverage);
-    Serial.print(avg);
-    Serial.print(" ");
-    Serial.println(runningAverage);
+    buzz(avg, runningAverage);
+    //Serial.print(avg);
+    //Serial.print(" ");
+    //Serial.println(runningAverage);
+    
+}
+}
+
+
+
+
+void plotGraph(void){
+  int maxVal = 0;
+  int minVal = 5000;
+
+  for(int i = 0; i < 128; i++){
+    maxVal = max(maxVal, outputValue[i]);
+    minVal = min(minVal, outputValue[i]);
   }
+
+  int lastVal = map(outputValue[0],0,4000,PLOT_Y_H, PLOT_Y_L);
+  int val = 1500;
+  
+  
+  for(int i = 0; i < 128; i++){
+    val = map(outputValue[i],0,4000,PLOT_Y_H, PLOT_Y_L);
+    display.drawVerticalLine(i, val, 1 + max(val, lastVal) - min(val, lastVal));
+    lastVal = map(outputValue[i],0,4000,PLOT_Y_H, PLOT_Y_L);
+  }
+  
+}
+
+
+void loop() {
+  display.clear();
+  plotGraph();
+  String tekst = "BPM: ";
+  tekst = tekst + String(BPM);
+  display.drawString(0, 0, tekst);
+  display.display();
+  delay(20);
 }
