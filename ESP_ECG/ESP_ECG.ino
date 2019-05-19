@@ -1,13 +1,13 @@
 
-#include <Wire.h>  
+#include <Wire.h>
 #include <Ticker.h>
-#include "SSD1306Wire.h" 
+#include "SSD1306Wire.h"
 
 SSD1306Wire  display(0x3c, 5, 4);
 
 
 
-#define NUM_SAMPLES 20
+#define NUM_SAMPLES 40
 #define BUZZ_PIN 12
 
 #define RUNNING_AVG 128
@@ -16,14 +16,15 @@ SSD1306Wire  display(0x3c, 5, 4);
 #define PLOT_Y_L 20
 
 
-int sensorPin = 39;    
-int sensorValue[NUM_SAMPLES] = {};  
+int sensorPin = 39;
+int sensorValue[NUM_SAMPLES] = {};
 int outputValue[1000] = {};
 int i = 0;
 int n = 0;
 int avg = 0;
 int sum = 0;
 int runningAverage = 0;
+float bias = 1800;
 
 int sumsum = 0;
 
@@ -50,31 +51,15 @@ void setup() {
 }
 
 
-void drawTextAlignmentDemo() {
-    // Text alignment demo
-  display.setFont(ArialMT_Plain_10);
-
-  // The coordinates define the left starting point of the text
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 10, "Left aligned (0,10)");
-
-  // The coordinates define the center of the text
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawString(64, 22, "Center aligned (64,22)");
-
-  // The coordinates define the right end of the text
-  display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  display.drawString(128, 33, "Right aligned (128,33)");
-}
 
 
 int pulseCounter = 0;
 int pulseCounterOld = 0;
 int BPM = 60;
 int BPMOld = 60;
-void calculateBPM(void){
-  BPM = 5 * (pulseCounter+pulseCounterOld);
-  BPM = (BPM+BPMOld)/2;
+void calculateBPM(void) {
+  BPM = 5 * (pulseCounter + pulseCounterOld);
+  BPM = (BPM + BPMOld) / 2;
   BPMOld = BPM;
   pulseCounterOld = pulseCounter;
   pulseCounter = 0;
@@ -85,29 +70,29 @@ unsigned long currentMillis = 0, previousMillis = 0;
 bool beat = false;
 bool beatOld = false;
 
-void buzz(int val, int avg){
+void buzz(int val, int avg) {
   int interval = 100;
   int treshold;
   treshold = avg * 1.4;
 
-  
+
   currentMillis = millis();
-  if(val > treshold){
+  if (val > treshold) {
     digitalWrite(BUZZ_PIN, HIGH);
     previousMillis = currentMillis;
     beatOld = beat;
     beat = true;
   }
 
-   
+
   if (currentMillis - previousMillis >= interval) {
-    
+
     digitalWrite(BUZZ_PIN, LOW);
     beatOld = beat;
     beat = false;
   }
 
-  if((beatOld == true) && (beat == false)){
+  if ((beatOld == true) && (beat == false)) {
     pulseCounter++;
   }
 
@@ -119,58 +104,60 @@ void sampleAndCalculate() {
   sensorValue[i] = analogRead(sensorPin);
   sum += sensorValue[i];
   i++;
-  
-  avg = sum/NUM_SAMPLES;
-  
 
-  if(i == NUM_SAMPLES ){
-    
+  avg = sum / NUM_SAMPLES;
+
+
+  if (i == NUM_SAMPLES ) {
+
     i = 0;
     sum = 0;
 
+    bias = (20*bias + avg)/21.0;
     outputValue[n] = avg;
 
-    for(int k = 0; k < RUNNING_AVG; k++){
+    for (int k = 0; k < RUNNING_AVG; k++) {
       sumsum += outputValue[k];
-      
+
     }
-    runningAverage = sumsum/RUNNING_AVG;
+    runningAverage = sumsum / RUNNING_AVG;
     sumsum = 0;
-    
+
     n++;
-    if(n == RUNNING_AVG)
+    if (n == RUNNING_AVG)
       n = 0;
 
     buzz(avg, runningAverage);
-    //Serial.print(avg);
-    //Serial.print(" ");
-    //Serial.println(runningAverage);
+    Serial.print(bias);
+    Serial.print(" ");
     
+    Serial.println(avg);
+
+  }
 }
-}
 
 
 
 
-void plotGraph(void){
+void plotGraph(void) {
   int maxVal = 0;
-  int minVal = 5000;
+  int minVal = 10000;
 
-  for(int i = 0; i < 128; i++){
+  for (int i = 0; i < 128; i++) {
     maxVal = max(maxVal, outputValue[i]);
     minVal = min(minVal, outputValue[i]);
   }
 
-  int lastVal = map(outputValue[0],0,4000,PLOT_Y_H, PLOT_Y_L);
+  int lastVal = map(outputValue[0], minVal-1, maxVal+1, PLOT_Y_H, PLOT_Y_L);
   int val = 1500;
-  
-  
-  for(int i = 0; i < 128; i++){
-    val = map(outputValue[i],0,4000,PLOT_Y_H, PLOT_Y_L);
+
+
+  for (int i = 0; i < 128; i++) {
+    val = map(outputValue[i], minVal-1, maxVal+1, PLOT_Y_H, PLOT_Y_L);
     display.drawVerticalLine(i, val, 1 + max(val, lastVal) - min(val, lastVal));
-    lastVal = map(outputValue[i],0,4000,PLOT_Y_H, PLOT_Y_L);
+    lastVal = val;
   }
-  
+
 }
 
 
